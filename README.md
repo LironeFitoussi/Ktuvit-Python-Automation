@@ -1,104 +1,126 @@
-# Python Selenium Automation Framework
+# Ktuvit Subtitle Automation
 
-## Overview
-
-This is a professional and robust base for a Python Selenium automation framework, built using the Page Object Model (POM) design pattern. It provides a solid foundation for creating scalable and maintainable web automation scripts.
-
-The framework is designed to be easily extensible. You can add new page objects, tests, and utility functions to suit your specific needs.
+An automated tool for downloading Hebrew subtitles from Ktuvit.me. This tool uses Selenium WebDriver to automate the process of logging in, navigating to TV show pages, and downloading subtitles for entire seasons.
 
 ## Features
 
-- **Page Object Model (POM):** A design pattern that creates a clear separation between test code and page-specific code.
-- **Cross-Browser Support:** Easily run tests on Chrome, Firefox, and Edge.
-- **Explicit Waits:** Uses `WebDriverWait` to handle dynamic elements, avoiding unreliable `time.sleep()` calls.
-- **Centralized Driver Management:** A `DriverFactory` to manage WebDriver instances.
-- **Dependency Management:** All required packages are listed in `requirements.txt`.
-- **Professional Structure:** A clean and organized project structure that is easy to understand and maintain.
+- Automated login to Ktuvit.me
+- Bulk download of subtitles for entire seasons
+- Automatic file naming in standard format (e.g., `The.Big.Bang.Theory.S01E01.srt`)
+- Download retry mechanism for failed downloads
+- Progress tracking and detailed logging
+- Downloads saved to local project directory
+
+## Prerequisites
+
+- Python 3.8+
+- Chrome browser installed
+- Git (for cloning the repository)
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/LironeFitoussi/Ktuvit-Python-Automation.git
+cd ktuvit-automation
+```
+
+2. Create and activate a virtual environment (recommended):
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install required packages:
+```bash
+pip install -r requirements.txt
+```
+
+## Configuration
+
+1. Create a `config.py` file in the project root:
+```python
+# Ktuvit login credentials
+KTUVIT_EMAIL = "your.email@example.com"
+KTUVIT_PASSWORD = "your-encrypted-password"  # Get this from browser console
+```
+
+To get your encrypted password:
+1. Go to Ktuvit.me
+2. Open browser console (F12)
+3. Run this JavaScript:
+```javascript
+x = { value: 'YOUR-PASSWORD' };
+loginHandler.EncryptPassword({}, x, 'YOUR-EMAIL');
+copy(x.value);
+```
 
 ## Project Structure
 
 ```
-.
-├── config/
-│   └── config.py
+ktuvit-automation/
+├── config.py                 # Configuration settings
+├── main.py                  # Main script
+├── downloads/               # Downloaded subtitles
 ├── pages/
 │   ├── __init__.py
-│   └── base_page.py
-├── utils/
-│   ├── __init__.py
-│   └── driver_factory.py
-├── .gitignore
-├── main.py
-└── requirements.txt
+│   ├── base_page.py        # Base page object
+│   └── subtitle_page.py    # Subtitle page handling
+└── utils/
+    └── driver_factory.py   # WebDriver setup
 ```
 
-- **`config/`**: Contains configuration files, such as URLs, credentials, and other settings.
-- **`pages/`**: Contains page object classes. Each class represents a page in the web application and contains the locators and methods for interacting with that page.
-- **`utils/`**: Contains utility classes and functions, such as the `DriverFactory` for creating WebDriver instances.
-- **`main.py`**: The entry point of the application.
-- **`requirements.txt`**: A file listing the Python packages required for the project.
-- **`.gitignore`**: Specifies which files and directories to ignore in a Git repository.
+## Usage
 
-## Getting Started
-
-### Prerequisites
-
-- Python 3.6+
-- `pip` (Python package installer)
-
-### Installation
-
-1.  **Clone the repository:**
-
-    ```bash
-    git clone <your-repo-url>
-    cd <your-repo-directory>
-    ```
-
-2.  **Create a virtual environment (recommended):**
-    ```bash
-        # Create a virtual environment
-        python -m venv .venv
-
-        # Activate the virtual environment:
-
-        # On Mac/Linux:
-        source .venv/bin/activate
-
-        # On Windows:
-
-        # Git Bash:
-        source .venv/Scripts/activate
-
-        # CMD:
-        .venv\Scripts\activate.bat
-
-        # PowerShell:
-        .venv\Scripts\Activate.ps1
-    ```
-
-3.  **Install the dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-### Running the Automation
-
-To run the automation script, execute the `main.py` file from the root directory:
-
+1. Run the script:
 ```bash
 python main.py
 ```
 
-The script will prompt you to enter a URL and choose a browser (chrome, firefox, or edge).
+2. Enter the TV show URL when prompted
 
-## Page Object Model (POM)
+3. Select the season number when prompted
 
-This framework uses the Page Object Model (POM), which is a design pattern that enhances test maintenance and reduces code duplication. In POM, each web page in the application is represented as a class. This class contains the locators for the elements on the page and the methods to interact with those elements.
+4. The script will:
+   - Log in to Ktuvit
+   - Navigate to the show page
+   - Download subtitles for all episodes in the selected season
+   - Save files in the `downloads` folder
 
-The `pages/base_page.py` file contains a `BasePage` class from which all other page object classes should inherit. This base class includes common methods like finding elements, clicking, sending keys, etc., using explicit waits for robustness.
+## Features in Detail
 
-## Dependencies
+### Automatic Login
+- Handles login process with encrypted password
+- Verifies successful login
 
-- `selenium`: The main library for browser automation.
-- `webdriver-manager`: A library that automatically manages the binaries for web drivers (e.g., chromedriver, geckodriver).
+### Season Processing
+- Lists all available seasons
+- Downloads all episodes in selected season
+- Proper error handling and retry mechanism
+
+### Download Retry Mechanism
+- 3 retry attempts for failed downloads
+- 3-second interval between retries
+- Error detection and handling
+
+### File Naming
+Files are saved in the format:
+```
+The.Big.Bang.Theory.S01E01.srt
+[Series.Name].[Season][Episode].srt
+```
+
+## Error Handling
+
+- Failed downloads are automatically retried
+- Detailed error logging
+- Progress tracking for each episode
+- Session management and recovery
+
+## Contributing
+
+Feel free to submit issues, fork the repository, and create pull requests for any improvements.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

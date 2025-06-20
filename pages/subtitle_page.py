@@ -3,9 +3,12 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from .base_page import BasePage
+from utils.file_handler import rename_subtitle_file
+from tqdm import tqdm
 import time
 import re
 import os
+import sys
 
 
 class SubtitlePage(BasePage):
@@ -41,37 +44,59 @@ class SubtitlePage(BasePage):
     def login(self, email, password):
         """Login to Ktuvit.me"""
         try:
-            print("\nAttempting to log in...")
-            
-            # Click login dropdown to open form
-            login_dropdown = self.wait.until(EC.element_to_be_clickable(self.LOGIN_DROPDOWN))
+            # Click login dropdown with explicit wait and timeout
+            login_dropdown = WebDriverWait(self.driver, 5).until(
+                EC.element_to_be_clickable(self.LOGIN_DROPDOWN)
+            )
             login_dropdown.click()
-            time.sleep(1)  # Wait for dropdown animation
             
-            # Fill login form
-            email_input = self.wait.until(EC.presence_of_element_located(self.LOGIN_EMAIL))
-            email_input.clear()  # Clear any existing value
+            # Wait for form to be visible and interactive
+            WebDriverWait(self.driver, 5).until(
+                EC.presence_of_element_located((By.ID, "navbarLoginForm"))
+            )
+            
+            # Fill login form with explicit waits
+            email_input = WebDriverWait(self.driver, 5).until(
+                EC.presence_of_element_located(self.LOGIN_EMAIL)
+            )
+            email_input.clear()
             email_input.send_keys(email)
             
-            password_input = self.driver.find_element(*self.LOGIN_PASSWORD)
-            password_input.clear()  # Clear any existing value
+            password_input = WebDriverWait(self.driver, 5).until(
+                EC.presence_of_element_located(self.LOGIN_PASSWORD)
+            )
+            password_input.clear()
             password_input.send_keys(password)
             
-            # Submit form
-            login_btn = self.driver.find_element(*self.LOGIN_BUTTON)
+            # Submit form with explicit wait
+            login_btn = WebDriverWait(self.driver, 5).until(
+                EC.element_to_be_clickable(self.LOGIN_BUTTON)
+            )
             login_btn.click()
             
-            # Wait for page reload and verify login success
+            # Wait for either success or failure
             try:
-                self.wait.until(EC.presence_of_element_located(self.LOGIN_SUCCESS))
-                print("Login successful - Found welcome message")
+                # Check for success first
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located(self.LOGIN_SUCCESS)
+                )
                 return True
             except TimeoutException:
-                print("Login failed - Welcome message not found")
-                return False
+                # Check if we're still on login form
+                try:
+                    self.driver.find_element(*self.LOGIN_EMAIL)
+                    return False  # Still on login form means failure
+                except:
+                    pass  # Not finding login form might mean success
+                    
+                # Double check for success message
+                try:
+                    if self.driver.find_element(*self.LOGIN_SUCCESS):
+                        return True
+                except:
+                    return False
             
-        except Exception as e:
-            print(f"Login failed: {str(e)}")
+        except Exception:
             return False
 
     def navigate_to(self, url, email=None, password=None):
@@ -79,27 +104,35 @@ class SubtitlePage(BasePage):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                print(f"\nAttempting to navigate to page (attempt {attempt + 1}/{max_retries})...")
+                print(f"\nAttempting to access page (attempt {attempt + 1}/{max_retries})")
                 self.driver.get(url)
-                time.sleep(3)  # Initial wait for JavaScript
-                print(f"Current URL: {self.driver.current_url}")
-                print(f"Page title: {self.driver.title}")
+                
+                # Wait for page load with shorter timeout
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
                 
                 if email and password:
                     if not self.login(email, password):
-                        print("Failed to login, cannot proceed with season listing")
+                        if attempt == max_retries - 1:
+                            return False
+                        continue
+                    
+                # Verify we can access content
+                try:
+                    WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located(self.MAIN_CONTENT)
+                    )
+                    return True
+                except TimeoutException:
+                    if attempt == max_retries - 1:
                         return False
-                    # After successful login, wait a bit for page to stabilize
-                    time.sleep(2)
-                
-                return True
+                    continue
+                    
             except WebDriverException as e:
-                print(f"Navigation error (attempt {attempt + 1}): {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(2)
-                else:
-                    print("Failed to navigate after all retries.")
+                if attempt == max_retries - 1:
                     raise
+                time.sleep(2)
 
     def get_main_content(self):
         """Get the main content div containing season buttons."""
@@ -122,21 +155,8 @@ class SubtitlePage(BasePage):
         """Get all available seasons"""
         try:
             season_buttons = self.wait.until(EC.presence_of_all_elements_located(self.SEASON_BUTTONS))
-            seasons = []
-            
-            for button in season_buttons:
-                season_id = button.get_attribute('data-season-id')
-                season_name = button.get_attribute('value')
-                seasons.append({
-                    'season_id': season_id,
-                    'season_name': season_name
-                })
-                print(f"Season ID: {season_id}, Name: {season_name}")
-                
-            return seasons
-            
-        except Exception as e:
-            print(f"Error getting seasons: {str(e)}")
+            return [int(btn.get_attribute('value').split()[-1]) for btn in season_buttons]
+        except Exception:
             return []
 
     def get_episodes(self):
@@ -182,56 +202,17 @@ class SubtitlePage(BasePage):
         except Exception as e:
             print(f"Error during debug: {str(e)}")
 
-    def list_seasons(self):
-        """List all available seasons with their IDs and names."""
-        seasons = []
-        buttons = self.get_seasons()
-        
-        for btn in buttons:
-            try:
-                season_id = btn['season_id']
-                season_name = btn['season_name']
-                if season_id and season_name:
-                    seasons.append({
-                        'season_id': season_id,
-                        'season_name': season_name
-                    })
-                    print(f"Found season: ID={season_id}, Name={season_name}")
-            except Exception as e:
-                print(f"Error processing season button: {str(e)}")
-                continue
-        
-        return seasons
-
-    def print_seasons(self):
-        """Print all available seasons in a formatted way."""
-        print("\nSearching for available seasons...")
-        seasons = self.list_seasons()
-        if not seasons:
-            print("\nNo seasons found. This could be because:")
-            print("1. The page hasn't loaded completely")
-            print("2. The content is protected or requires authentication")
-            print("3. The page structure is different than expected")
-            return
-        
-        print("\nAvailable seasons:")
-        for season in seasons:
-            print(f"Season ID: {season['season_id']}, Name: {season['season_name']}")
-
     def select_season(self, season_number):
         """Select a specific season by its number."""
         try:
             season_buttons = self.wait.until(EC.presence_of_all_elements_located(self.SEASON_BUTTONS))
             for button in season_buttons:
                 if button.get_attribute('value').strip() == f"עונה {season_number}":
-                    print(f"Clicking season {season_number} button")
                     button.click()
-                    time.sleep(1)  # Wait for episode list to update
+                    time.sleep(1)
                     return True
-            print(f"Season {season_number} not found")
             return False
-        except Exception as e:
-            print(f"Error selecting season: {str(e)}")
+        except Exception:
             return False
 
     def select_episode(self, episode_number):
@@ -240,14 +221,11 @@ class SubtitlePage(BasePage):
             episode_buttons = self.wait.until(EC.presence_of_all_elements_located(self.EPISODE_BUTTONS))
             for button in episode_buttons:
                 if button.get_attribute('value').strip() == f"פרק {episode_number}":
-                    print(f"Clicking episode {episode_number} button")
                     button.click()
-                    time.sleep(1)  # Wait for subtitle list to update
+                    time.sleep(1)
                     return True
-            print(f"Episode {episode_number} not found")
             return False
-        except Exception as e:
-            print(f"Error selecting episode: {str(e)}")
+        except Exception:
             return False
 
     def get_subtitle_info(self):
@@ -326,67 +304,86 @@ class SubtitlePage(BasePage):
         print(f"Failed to download after {max_retries} attempts")
         return False
 
-    def download_first_subtitle(self, season_num, episode_num):
-        """Download the first available subtitle for a given season/episode."""
+    def update_progress(self, current, total, episode_num, status=""):
+        """Update progress in a single line."""
+        bar_width = 40
+        filled = int(bar_width * current / total)
+        bar = "█" * filled + "░" * (bar_width - filled)
+        percent = current / total * 100
+        
+        sys.stdout.write(f"\rProgress: {percent:3.0f}% |{bar}| {current}/{total} Episode {episode_num} {status}")
+        sys.stdout.flush()
+
+    def download_first_subtitle(self, season_num, episode_num, current, total):
+        """Download the first available subtitle for a specific episode."""
         try:
-            # Wait for download button to be clickable
-            download_button = self.wait.until(
-                EC.element_to_be_clickable(self.DOWNLOAD_BUTTON)
-            )
+            self.wait.until(EC.presence_of_element_located(self.SUBTITLE_TABLE))
+            download_button = self.wait.until(EC.element_to_be_clickable(self.DOWNLOAD_BUTTON))
+            if not download_button:
+                return False
+                
+            if not self.series_name:
+                self.series_name = self.get_series_name()
             
-            # Generate proper filename (e.g., The.Big.Bang.Theory.S11E09.srt)
-            series_name = self.get_series_name()
-            filename = f"{series_name}.S{season_num:02d}E{episode_num:02d}.srt"
-            filepath = os.path.join(self.downloads_dir, filename)
+            max_download_attempts = 3
+            for attempt in range(max_download_attempts):
+                self.update_progress(current, total, episode_num, f"[Attempt {attempt + 1}/{max_download_attempts}]")
+                
+                download_button.click()
+                
+                success, _ = rename_subtitle_file(
+                    downloads_dir=self.downloads_dir,
+                    show_name=self.series_name,
+                    season=season_num,
+                    episode=episode_num,
+                    max_retries=2,
+                    retry_interval=2
+                )
+                
+                if success:
+                    self.update_progress(current, total, episode_num, "✓")
+                    return True
+                    
+                if attempt < max_download_attempts - 1:
+                    time.sleep(2)
+                    download_button = self.wait.until(EC.element_to_be_clickable(self.DOWNLOAD_BUTTON))
             
-            print(f"Attempting to download: {filename}")
+            self.update_progress(current, total, episode_num, "✗")
+            return False
             
-            # Try download with retry mechanism
-            if self.download_with_retry(download_button, filename):
-                print(f"Successfully downloaded: {filename}")
-                return filename
-            else:
-                print(f"Failed to download: {filename}")
-                return None
-            
-        except Exception as e:
-            print(f"Error downloading subtitle: {str(e)}")
-            return None
+        except Exception:
+            self.update_progress(current, total, episode_num, "✗")
+            return False
 
     def download_all_episodes_in_season(self, season_num):
-        """Download subtitles for all episodes in a season."""
-        try:
-            # Get all episode buttons
-            episode_buttons = self.wait.until(EC.presence_of_all_elements_located(self.EPISODE_BUTTONS))
-            total_episodes = len(episode_buttons)
-            print(f"\nFound {total_episodes} episodes in season {season_num}")
-            
-            downloaded_files = []
-            for idx, button in enumerate(episode_buttons, 1):
-                try:
-                    # Get episode number from button value (e.g. "פרק 1" -> 1)
-                    episode_text = button.get_attribute('value').strip()
-                    episode_num = int(''.join(filter(str.isdigit, episode_text)))
-                    
-                    print(f"\nProcessing episode {episode_num} ({idx}/{total_episodes})")
-                    
-                    # Click the episode button
-                    button.click()
-                    time.sleep(1)  # Wait for subtitle list to update
-                    
-                    # Download the subtitle
-                    filename = self.download_first_subtitle(season_num, episode_num)
-                    if filename:
-                        downloaded_files.append(filename)
-                    
-                    time.sleep(1)  # Wait between episodes
-                    
-                except Exception as e:
-                    print(f"Error processing episode {idx}: {str(e)}")
-                    continue
-            
+        """Download subtitles for all episodes in the selected season."""
+        downloaded_files = []
+        episodes = self.get_episodes()
+        
+        if not episodes:
             return downloaded_files
             
-        except Exception as e:
-            print(f"Error downloading season: {str(e)}")
-            return [] 
+        total = len(episodes)
+        current = 0
+        
+        for episode in episodes:
+            episode_num = int(re.search(r'\d+', episode['episode_name']).group())
+            
+            max_episode_attempts = 2
+            for attempt in range(max_episode_attempts):
+                if not self.select_episode(episode_num):
+                    continue
+                
+                if self.download_first_subtitle(season_num, episode_num, current, total):
+                    filename = f"{self.series_name}.S{season_num:02d}E{episode_num:02d}.srt"
+                    downloaded_files.append(filename)
+                    current += 1
+                    break
+                
+                if attempt < max_episode_attempts - 1:
+                    time.sleep(2)
+            
+            time.sleep(1)
+            
+        sys.stdout.write("\n")
+        return downloaded_files 
